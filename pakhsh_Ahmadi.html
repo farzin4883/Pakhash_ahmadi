@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>پخش مواد غذایی و نوشیدنی احمدی</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    body { font-family: Tahoma, Vazir, Arial, sans-serif; background-color: #f1f5f9; margin: 0; padding: 15px; direction: rtl; color: #1e293b; }
+    .header { background: #0f172a; color: white; padding: 18px; border-radius: 12px; margin-bottom: 15px; }
+    .nav-btn { padding: 10px 18px; border-radius: 8px; border: 1px solid #cbd5e1; font-weight: bold; cursor: pointer; margin-left: 8px; margin-bottom: 8px; font-family: inherit; background: white; color: #334155; }
+    .nav-btn.active { background: #2563eb !important; color: white !important; border-color: #2563eb !important; }
+    .card { background: white; padding: 18px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; margin-bottom: 15px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+    .btn-main { background: #16a34a; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; width: 100%; margin-top: 10px; font-size: 15px; font-family: inherit; }
+    .btn-blue { background: #2563eb; color: white; border: none; padding: 10px; border-radius: 8px; font-weight: bold; cursor: pointer; width: 100%; font-family: inherit; }
+    .btn-sky { background: #0284c7; color: white; border: none; padding: 10px; border-radius: 8px; font-weight: bold; cursor: pointer; width: 100%; margin-top: 8px; font-family: inherit; }
+    input, select { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #cbd5e1; box-sizing: border-box; margin-bottom: 10px; font-family: inherit; }
+    table { width: 100%; border-collapse: collapse; text-align: right; }
+    th, td { padding: 8px; border-bottom: 1px solid #eee; }
+    th { background: #f8fafc; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .modal-overlay { position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 10px; }
+    .invoice-box { background: white; width: 100%; max-width: 650px; padding: 20px; border-radius: 10px; border: 2px solid #0f172a; box-sizing: border-box; color: #000; }
+    @media print {
+      body * { visibility: hidden; }
+      .printable-invoice, .printable-invoice * { visibility: visible; }
+      .printable-invoice { position: absolute; left: 0; top: 0; width: 100%; }
+      .no-print { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h2 style="margin:0;">پخش مواد غذایی و نوشیدنی احمدی</h2>
+    <p style="margin:4px 0 0 0; font-size:13px; color:#94a3b8;">سامانه ویزیتوری و ثبت فاکتور (نسخه ویندوز / متصل به اکسل سیبا)</p>
+  </div>
+
+  <!-- منوی تب‌ها -->
+  <div>
+    <button id="btn-pos" class="nav-btn active" onclick="switchTab('pos')">ثبت فاکتور</button>
+    <button id="btn-customers" class="nav-btn" onclick="switchTab('customers')">مشتریان (<span id="custCount">0</span>)</button>
+    <button id="btn-invoices" class="nav-btn" onclick="switchTab('invoices')">فاکتورها (<span id="invCount">0</span>)</button>
+  </div>
+
+  <div id="notification" style="display:none; padding:12px; background:#16a34a; color:#fff; border-radius:8px; margin-bottom:12px; font-weight:bold;"></div>
+
+  <!-- تب ۱: ثبت فاکتور -->
+  <div id="tab-pos" class="tab-content active">
+    <div class="card" style="border: 2px solid #2563eb;">
+      <h3>ثبت فاکتور فروش</h3>
+      
+      <label><b>۱. انتخاب مشتری:</b></label>
+      <select id="customerSelect">
+        <option value="">-- انتخاب مشتری --</option>
+      </select>
+
+      <label style="margin-top:10px; display:block;"><b>۲. انتخاب کالا:</b></label>
+      <div class="grid" id="productsGrid"></div>
+<h4 style="margin-top:15px;">سبد خرید:</h4>
+      <div id="cartItems"><p style="color:#64748b;">هیچ کالایی انتخاب نشده است.</p></div>
+
+      <label style="margin-top:10px; display:block;"><b>۳. نحوه تسویه:</b></label>
+      <select id="payMethod">
+        <option value="نسیه / امانی">نسیه / امانی (دفتری)</option>
+        <option value="نقدی">نقدی / کارتخوان</option>
+        <option value="چک">چک صیادی</option>
+      </select>
+
+      <h3 style="color:#1e293b;">جمع کل: <span id="cartTotal">0</span> تومان</h3>
+
+      <button class="btn-sky" onclick="previewCurrentCart()">پیش‌نمایش فاکتور اصلی</button>
+      <button class="btn-main" onclick="submitInvoice()">ثبت نهایی فاکتور</button>
+    </div>
+  </div>
+
+  <!-- تب ۲: مشتریان -->
+  <div id="tab-customers" class="tab-content">
+    <div class="card">
+      <h3>فراخوانی اطلاعات از اکسل سیبا</h3>
+      <button class="btn-blue" onclick="document.getElementById('excelFileInput').click();">
+        فراخوانی فایل مشتریان و مانده حساب‌ها (MandeAshkhas.xlsx)
+      </button>
+      <input type="file" id="excelFileInput" accept=".xlsx, .xls" onchange="importCustomersExcel(event)" style="display:none;">
+    </div>
+
+    <div class="card">
+      <h3>تعریف مشتری جدید (دستی)</h3>
+      <input type="text" id="newCustName" placeholder="نام مغازه / شخص *">
+      <input type="text" id="newCustPhone" placeholder="شماره تلفن">
+      <input type="text" id="newCustAddress" placeholder="آدرس مغازه">
+      <button class="btn-main" onclick="addCustomer()">+ افزودن دستی مشتری</button>
+    </div>
+
+    <div class="card">
+      <h3>لیست مشتریان (<span id="totalCustLabel">0</span> شخص)</h3>
+      <div id="customersList"></div>
+    </div>
+  </div>
+
+  <!-- تب ۳: فاکتورها -->
+  <div id="tab-invoices" class="tab-content">
+    <div class="card">
+      <h3>لیست فاکتورهای ثبت شده</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>شماره</th>
+            <th>مشتری</th>
+            <th>تسویه</th>
+            <th>مبلغ کل</th>
+            <th>مشاهده</th>
+          </tr>
+        </thead>
+        <tbody id="invoicesTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- پیش‌نمایش فاکتور -->
+  <div id="modalOverlay" class="modal-overlay">
+    <div class="invoice-box printable-invoice">
+      <div style="border-bottom:2px solid #000; padding-bottom:10px; text-align:center;">
+        <h2 style="margin:0;">پخش مواد غذایی و نوشیدنی احمدی</h2>
+        <p style="margin:5px 0 0 0; font-size:13px;">صورتحساب فروش کالا</p>
+      </div>
+      <div style="display:flex; justify-content:space-between; font-size:12px; margin:10px 0;">
+        <div>
+          <p><b>مشتری:</b> <span id="invCustName"></span></p>
+          <p><b>تلفن:</b> <span id="invCustPhone"></span></p>
+          <p><b>آدرس:</b> <span id="invCustAddress"></span></p>
+        </div>
+        <div style="text-align:left;">
+          <p><b>شماره فاکتور:</b> <span id="invNum"></span></p>
+          <p><b>تاریخ:</b> <span id="invDate"></span></p>
+        </div>
+      </div>
+      <table style="border: 1px solid #000;">
+        <thead>
+          <tr>
+            <th>کد</th>
+            <th>نام کالا</th>
+            <th>تعداد</th>
+            <th>قیمت</th>
+            <th>مبلغ کل</th>
+          </tr>
+        </thead>
+        <tbody id="invItemsTable"></tbody>
+      </table>
+      <div style="margin-top:15px; font-size:15px; text-align:left;">
+        <b>جمع کل: <span id="invTotal"></span> تومان</b>
+      </div>
+      <div class="no-print" style="margin-top:20px; display:flex; gap:10px;">
+        <button onclick="window.print()" class="btn-main" style="flex:1;">چاپ فاکتور</button>
+        <button onclick="closeModal()" class="btn-sky" style="flex:1; background:#64748b;">بستن</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    var products = [
+      { id: 1, code: '101', name: 'آبمیوه تک‌نفره سان‌ستار', price: 45000 },
+      { id: 2, code: '102', name: 'پفک اشی مشی 50 گرمی', price: 15000 },
+      { id: 3, code: '103', name: 'نوشیدنی سانی‌نس 300 میل', price: 20000 },
+      { id: 4, code: '104', name: 'عرق نعناع تنگاره 1 لیتری', price: 65000 }
+    ];
+var customers = JSON.parse(localStorage.getItem('win_customers') || '[]');
+    var invoices = JSON.parse(localStorage.getItem('win_invoices') || '[]');
+    var cart = [];
+
+    function switchTab(tabName) {
+      document.getElementById('tab-pos').style.display = 'none';
+      document.getElementById('tab-customers').style.display = 'none';
+      document.getElementById('tab-invoices').style.display = 'none';
+
+      document.getElementById('btn-pos').className = 'nav-btn';
+      document.getElementById('btn-customers').className = 'nav-btn';
+      document.getElementById('btn-invoices').className = 'nav-btn';
+
+      document.getElementById('tab-' + tabName).style.display = 'block';
+      document.getElementById('btn-' + tabName).className = 'nav-btn active';
+
+      render();
+    }
+
+    function notify(msg) {
+      var el = document.getElementById('notification');
+      el.innerText = ':white_check_mark: ' + msg;
+      el.style.display = 'block';
+      setTimeout(function() { el.style.display = 'none'; }, 3000);
+    }
+
+    function importCustomersExcel(e) {
+      var file = e.target.files[0];
+      if (!file) return;
+
+      var reader = new FileReader();
+      reader.onload = function(evt) {
+        try {
+          var data = new Uint8Array(evt.target.result);
+          var workbook = XLSX.read(data, { type: 'array' });
+          var firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+          var jsonData = XLSX.utils.sheet_to_json(firstSheet);
+
+          var parsed = jsonData.map(function(row, idx) {
+            return {
+              id: row['کد شخص'] || (idx + 1),
+              code: String(row['کد شخص'] || (idx + 1)),
+              name: row['نام شخص'] || 'بدون نام',
+              phone: row['تلفن'] ? String(row['تلفن']) : '-',
+              address: row['آدرس'] || 'ثبت نشده',
+              balance: Number(row['مبلغ مانده حساب']) || 0
+            };
+          });
+
+          if (parsed.length > 0) {
+            customers = parsed;
+            localStorage.setItem('win_customers', JSON.stringify(customers));
+            notify('بروزرسانی موفق: ' + parsed.length + ' مشتری وارد شد.');
+            render();
+          }
+        } catch (err) {
+          alert('خطا در خواندن فایل اکسل.');
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function render() {
+      document.getElementById('custCount').innerText = customers.length;
+      document.getElementById('totalCustLabel').innerText = customers.length;
+      document.getElementById('invCount').innerText = invoices.length;
+
+      var custSelect = document.getElementById('customerSelect');
+      var optionsHtml = '<option value="">-- انتخاب مشتری --</option>';
+      for (var i = 0; i < customers.length; i++) {
+        var c = customers[i];
+        optionsHtml += '<option value="' + c.id + '">کد ' + c.code + ': ' + c.name + ' (' + c.address + ')</option>';
+      }
+      custSelect.innerHTML = optionsHtml;
+
+      var pGrid = document.getElementById('productsGrid');
+      var gridHtml = '';
+      for (var j = 0; j < products.length; j++) {
+        var p = products[j];
+        gridHtml += '<div style="border:1px solid #cbd5e1; padding:10px; border-radius:8px; background:#fff;">' +
+          '<b>' + p.name + '</b>' +
+          '<p style="color:#2563eb; font-weight:bold; margin:4px 0;">' + p.price.toLocaleString() + ' تومان</p>' +
+          '<button onclick="addToCart(' + p.id + ')" class="btn-blue">+ افزودن به فاکتور</button>' +
+        '</div>';
+      }
+      pGrid.innerHTML = gridHtml;
+
+      renderCart();
+
+      var custListEl = document.getElementById('customersList');
+      if (customers.length === 0) {
+        custListEl.innerHTML = '<p style="color:#64748b;">هنوز هیچ مشتری ثبت نشده است.</p>';
+      } else {
+        var custListHtml = '';
+        for (var k = 0; k < customers.length; k++) {
+var cust = customers[k];
+          custListHtml += '<div style="border-bottom:1px solid #eee; padding:8px 0; display:flex; justify-content:space-between; align-items:center;">' +
+            '<div><b>' + cust.name + '</b> (کد ' + cust.code + ') - :telephone_receiver: ' + cust.phone + '<p style="margin:2px 0; font-size:12px; color:#64748b;">:round_pushpin: ' + cust.address + '</p></div>' +
+            '<div><span style="font-size:12px; color:#dc2626; font-weight:bold;">مانده: ' + Number(cust.balance).toLocaleString() + ' ریال</span></div>' +
+          '</div>';
+        }
+        custListEl.innerHTML = custListHtml;
+      }
+
+      var invTable = document.getElementById('invoicesTable');
+      var invHtml = '';
+      for (var m = 0; m < invoices.length; m++) {
+        var inv = invoices[m];
+        invHtml += '<tr>' +
+          '<td>' + inv.id + '</td>' +
+          '<td>' + inv.customerName + '</td>' +
+          '<td>' + inv.payMethod + '</td>' +
+          '<td><b>' + inv.total.toLocaleString() + ' تومان</b></td>' +
+          '<td><button onclick="viewInvoice(\'' + inv.id + '\')" class="btn-sky" style="padding:4px 8px; margin:0;">مشاهده</button></td>' +
+        '</tr>';
+      }
+      invTable.innerHTML = invHtml;
+    }
+
+    function addToCart(pId) {
+      var product;
+      for (var i = 0; i < products.length; i++) {
+        if (products[i].id === pId) { product = products[i]; break; }
+      }
+      var exist;
+      for (var j = 0; j < cart.length; j++) {
+        if (cart[j].id === pId) { exist = cart[j]; break; }
+      }
+      if (exist) exist.qty += 1;
+      else cart.push({ id: product.id, code: product.code, name: product.name, price: product.price, qty: 1 });
+      renderCart();
+    }
+
+    function renderCart() {
+      var container = document.getElementById('cartItems');
+      if (cart.length === 0) {
+        container.innerHTML = '<p style="color:#64748b;">هیچ کالایی انتخاب نشده است.</p>';
+        document.getElementById('cartTotal').innerText = '0';
+        return;
+      }
+      var total = 0;
+      var cartHtml = '';
+      for (var i = 0; i < cart.length; i++) {
+        var item = cart[i];
+        var itemTotal = item.qty * item.price;
+        total += itemTotal;
+        cartHtml += '<div style="display:flex; justify-content:space-between; border-bottom:1px solid #eee; padding:6px 0;">' +
+          '<span>' + item.name + ' (' + item.qty + ' عدد)</span>' +
+          '<span>' + itemTotal.toLocaleString() + ' تومان</span>' +
+        '</div>';
+      }
+      container.innerHTML = cartHtml;
+      document.getElementById('cartTotal').innerText = total.toLocaleString();
+    }
+
+    function addCustomer() {
+      var name = document.getElementById('newCustName').value;
+      if (!name) return alert('نام مشتری الزامی است');
+      var newC = {
+        id: Date.now(),
+        code: String(Math.floor(1000 + Math.random() * 9000)),
+        name: name,
+        phone: document.getElementById('newCustPhone').value || '-',
+        address: document.getElementById('newCustAddress').value || '-',
+        balance: 0
+      };
+      customers.push(newC);
+      localStorage.setItem('win_customers', JSON.stringify(customers));
+      document.getElementById('newCustName').value = '';
+      document.getElementById('newCustPhone').value = '';
+      document.getElementById('newCustAddress').value = '';
+      notify('مشتری با موفقیت اضافه شد.');
+      render();
+    }
+
+    function submitInvoice() {
+      var cId = document.getElementById('customerSelect').value;
+      if (!cId) return alert('لطفا ابتدا مشتری را انتخاب کنید');
+      if (cart.length === 0) return alert('سبد خرید خالی است');
+
+      var cust;
+      for (var i = 0; i < customers.length; i++) {
+        if (String(customers[i].id) === String(cId)) { cust = customers[i]; break; }
+      }
+      var total = 0;
+      for (var j = 0; j < cart.length; j++) {
+        total += (cart[j].qty * cart[j].price);
+      }
+var inv = {
+        id: 'INV-' + Math.floor(1000 + Math.random() * 9000),
+        customerName: cust.name,
+        customerPhone: cust.phone,
+        customerAddress: cust.address,
+        payMethod: document.getElementById('payMethod').value,
+        items: JSON.parse(JSON.stringify(cart)),
+        total: total,
+        date: new Date().toLocaleDateString('fa-IR')
+      };
+
+      invoices.unshift(inv);
+      localStorage.setItem('win_invoices', JSON.stringify(invoices));
+      cart = [];
+      renderCart();
+      notify('فاکتور با موفقیت ثبت شد!');
+      render();
+    }
+
+    function viewInvoice(invId) {
+      var inv;
+      for (var i = 0; i < invoices.length; i++) {
+        if (invoices[i].id === invId) { inv = invoices[i]; break; }
+      }
+      if (!inv) return;
+
+      document.getElementById('invCustName').innerText = inv.customerName;
+      document.getElementById('invCustPhone').innerText = inv.customerPhone;
+      document.getElementById('invCustAddress').innerText = inv.customerAddress;
+      document.getElementById('invNum').innerText = inv.id;
+      document.getElementById('invDate').innerText = inv.date;
+      document.getElementById('invTotal').innerText = inv.total.toLocaleString();
+
+      var itemsHtml = '';
+      for (var j = 0; j < inv.items.length; j++) {
+        var item = inv.items[j];
+        itemsHtml += '<tr>' +
+          '<td>' + item.code + '</td>' +
+          '<td>' + item.name + '</td>' +
+          '<td>' + item.qty + '</td>' +
+          '<td>' + item.price.toLocaleString() + '</td>' +
+          '<td>' + (item.qty * item.price).toLocaleString() + '</td>' +
+        '</tr>';
+      }
+      document.getElementById('invItemsTable').innerHTML = itemsHtml;
+      document.getElementById('modalOverlay').style.display = 'flex';
+    }
+
+    function closeModal() {
+      document.getElementById('modalOverlay').style.display = 'none';
+    }
+
+    // لود اولیه
+    render();
+  </script>
+</body>
+</html>
